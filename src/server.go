@@ -47,6 +47,30 @@ func init() {
   key = []byte(os.Getenv("SECRET_KEY"))
 }
 
+func signup(w http.ResponseWriter, r *http.Request) {
+  //create a Credentials object
+  var creds Credential
+  //decode json to struct
+  err := json.NewDecoder(r.Body).Decode(&creds)
+  if err != nil {
+    w.WriteHeader(http.StatusBadRequest)
+    return
+  }
+
+  userPassword, ok := userdb[creds.Username]
+
+  //if user exists, verify the password
+  if ok || userPassword == creds.Password {
+    w.WriteHeader(http.StatusBadRequest)
+    w.Write([]byte("Account already exists for this user"))
+    return
+  }
+
+  userdb[creds.Username] = creds.Password
+
+  json.NewEncoder(w).Encode(fmt.Sprintf("%s successfully signed up. Please login", creds.Username))
+}
+
 
 //login user login function
 func login(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +89,7 @@ func login(w http.ResponseWriter, r *http.Request) {
   //if user exists, verify the password
   if !ok || userPassword != creds.Password {
     w.WriteHeader(http.StatusUnauthorized)
+    w.Write([]byte("Unrecognized credentials. Must sign up first"))
     return
   }
 
@@ -88,6 +113,8 @@ func login(w http.ResponseWriter, r *http.Request) {
 
   json.NewEncoder(w).Encode(tokenString)
 }
+
+
 
 //dashboard User's personalized dashboard
 func dashboard(w http.ResponseWriter, r *http.Request) {
@@ -227,6 +254,7 @@ func handleRequests() {
   myRouter.HandleFunc("/skateboard/{id}", returnSingleBoard)
 
   //user authentication endpoints
+  myRouter.HandleFunc("/signup", signup).Methods("POST")
   myRouter.HandleFunc("/login", login).Methods("POST")
   myRouter.HandleFunc("/dashboard", dashboard).Methods("GET")
 
