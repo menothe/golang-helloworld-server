@@ -38,7 +38,7 @@ var userdb = map[string]string {
 
 //assign the secret key to key variable on program's first run
 func init() {
-  err := godotenv.Load()
+  err := godotenv.Load(".env")
 
   if err != nil {
     log.Fatal("Error loading .env file")
@@ -73,12 +73,12 @@ func login(w http.ResponseWriter, r *http.Request) {
     Username: creds.Username,
     StandardClaims: jwt.StandardClaims{
       //Enter the expiration in milliseconds
-      ExpiresAt: time.Now.Add(10 * time.Minute).Unix(),
+      ExpiresAt: time.Now().Add(10 * time.Minute).Unix(),
     },
   }
 
   //Create a new claim with HS256 algorithm and token claim
-  token := jwt.NewWithClaims(jwt.SigningMethodHs256, tokenClaim)
+  token := jwt.NewWithClaims(jwt.SigningMethodHS256, tokenClaim)
 
   tokenString, err := token.SignedString(key)
 
@@ -87,6 +87,57 @@ func login(w http.ResponseWriter, r *http.Request) {
   }
 
   json.NewEncoder(w).Encode(tokenString)
+}
+
+//dashboard User's personalized dashboard
+func dashboard(w http.ResponseWriter, r *http.Request) {
+  //get the bearer token from the request handler
+
+  bearerToken := r.Header.Get("Authorization")
+
+  //validate token, it will return Token and error
+  token, err := ValidateToken(bearerToken)
+
+  if err != nil {
+    //check if Error is Signature Invalid Error
+
+    if err == jwt.ErrSignatureInvalid {
+      //return the Unauthorized Status
+      w.WriteHeader(http.StatusUnauthorized)
+      return
+    }
+
+    //Return the bad request for any other error
+    w.WriteHeader(http.StatusBadRequest)
+    return
+  }
+
+  if !token.Valid {
+    //return the Unauthorized status for expired token
+    w.WriteHeader(http.StatusUnauthorized)
+    return
+  }
+
+  //Type cast the claims to *Token type
+  user := token.Claims.(*Token)
+
+  //send the username Dashboard message
+  json.NewEncoder(w).Encode(fmt.Sprintf("%s Dashboard", user.Username))
+}
+
+// ValidateToken validates the token with the secret key and returns the object
+func ValidateToken(bearerToken string) (*jwt.Token, error) {
+
+  //format the token string
+  tokenString := strings.Split(bearerToken, " ")[1]
+
+  //Parse the token with tokenObj
+  token, err := jwt.ParseWithClaims(tokenString, &Token{}, func(token *jwt.Token)(interface{}, error) {
+    return key, nil
+  })
+
+  //return token and err
+  return token, err
 }
 
 func helloWorld(w http.ResponseWriter, r *http.Request){
