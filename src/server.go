@@ -10,7 +10,84 @@ import (
     "strconv"
     "io/ioutil"
     "github.com/gorilla/mux"
+    jwt "github.com/dgrijalva/jwt-go"
+    "github.com/joho/godotenv"
+    "time"
+    "strings"
 )
+
+//Secret key to uniquely sign the token
+var key []byte
+
+//Credential User's login information
+type Credential struct {
+  Username string `json:"username"`
+  Password string `json:"password"`
+}
+
+//Token jwt standard claim object
+type Token struct {
+  Username string `json:"username"`
+  jwt.StandardClaims
+}
+
+//dummy local db instance as a key value pair
+var userdb = map[string]string {
+  "user1": "password123",
+}
+
+//assign the secret key to key variable on program's first run
+func init() {
+  err := godotenv.Load()
+
+  if err != nil {
+    log.Fatal("Error loading .env file")
+  }
+
+  key = []byte(os.Getenv("SECRET_KEY"))
+}
+
+
+//login user login function
+func login(w http.ResponseWriter, r *http.Request) {
+  //create a Credentials object
+  var creds Credential
+  //decode json to struct
+  err := json.NewDecoder(r.Body).Decode(&creds)
+  if err != nil {
+    w.WriteHeader(http.StatusBadRequest)
+    return
+  }
+
+  //verify if user exists or not
+  userPassword, ok := userdb[creds.Username]
+
+  //if user exists, verify the password
+  if !ok || userPassword != creds.Password {
+    w.WriteHeader(http.StatusUnauthorized)
+    return
+  }
+
+  //Create a token object and add the Username and StandardClaims
+  var tokenClaim = Token {
+    Username: creds.Username,
+    StandardClaims: jwt.StandardClaims{
+      //Enter the expiration in milliseconds
+      ExpiresAt: time.Now.Add(10 * time.Minute).Unix(),
+    },
+  }
+
+  //Create a new claim with HS256 algorithm and token claim
+  token := jwt.NewWithClaims(jwt.SigningMethodHs256, tokenClaim)
+
+  tokenString, err := token.SignedString(key)
+
+  if err != nil {
+    log.Fatal(err)
+  }
+
+  json.NewEncoder(w).Encode(tokenString)
+}
 
 func helloWorld(w http.ResponseWriter, r *http.Request){
     fmt.Fprintf(w, "Hello Alex")
@@ -90,12 +167,17 @@ func updateBoard(w http.ResponseWriter, r *http.Request) {
 func handleRequests() {
   myRouter := mux.NewRouter().StrictSlash(true)
 
+  //main CRUD endpoints
   myRouter.HandleFunc("/", helloWorld)
   myRouter.HandleFunc("/skateboards", returnAllBoards)
   myRouter.HandleFunc("/skateboard", createNewBoard).Methods("POST")
   myRouter.HandleFunc("/skateboard/{id}", deleteBoard).Methods("DELETE")
   myRouter.HandleFunc("/skateboard/{id}", updateBoard).Methods("PUT")
   myRouter.HandleFunc("/skateboard/{id}", returnSingleBoard)
+
+  //user authentication endpoints
+  myRouter.HandleFunc("/login", login).Methods("POST")
+  myRouter.HandleFunc("/dashboard", dashboard).Methods("GET")
 
   log.Fatal(http.ListenAndServe(getPort(), myRouter))
 }
